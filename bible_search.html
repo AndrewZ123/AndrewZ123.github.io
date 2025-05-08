@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bible Search Tool (ESV)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for results - optional */
+        #resultsArea::-webkit-scrollbar {
+            width: 8px;
+        }
+        #resultsArea::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #resultsArea::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #resultsArea::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .prose strong { /* Ensure strong tags within prose are styled as expected */
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col items-center py-8 px-4 selection:bg-sky-200">
+
+    <div class="w-full max-w-3xl bg-white shadow-2xl rounded-xl p-6 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-sky-700">Bible Search Tool</h1>
+            <p class="text-slate-600 mt-2">Search the ESV Bible by keyword, topic, or passage reference.</p>
+        </header>
+
+        <div id="apiKeyNotice" class="hidden mb-6 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-md">
+            <h3 class="font-bold">API Key Required</h3>
+            <p class="text-sm">This tool uses the official ESV API. Please <a href="https://my.crossway.org/account/create-api-key" target="_blank" rel="noopener noreferrer" class="underline hover:text-yellow-800">obtain a free API key from Crossway</a> and paste it into the `YOUR_ESV_API_KEY` placeholder in the JavaScript code of this file.</p>
+        </div>
+
+        <div class="mb-6 flex flex-col sm:flex-row gap-4">
+            <div class="flex-grow">
+                <label for="searchTerm" class="sr-only">Search Term</label>
+                <input type="text" id="searchTerm" placeholder="Enter keyword, topic, or passage (e.g., John 3:16)" class="w-full px-4 py-3 rounded-lg border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-sm transition-colors">
+            </div>
+            <div class="flex-shrink-0">
+                <label for="searchType" class="sr-only">Search Type</label>
+                <select id="searchType" class="w-full sm:w-auto px-4 py-3 rounded-lg border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-sm h-full bg-white">
+                    <option value="keyword">Keyword/Topic</option>
+                    <option value="passage">Passage Reference</option>
+                </select>
+            </div>
+            <button id="searchButton" class="px-6 py-3 bg-sky-600 text-white font-semibold rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50 shadow-sm transition-colors">
+                Search
+            </button>
+        </div>
+
+        <div id="loadingIndicator" class="hidden text-center my-8">
+            <svg class="animate-spin h-8 w-8 text-sky-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2 text-slate-500">Searching...</p>
+        </div>
+
+        <div id="errorDisplay" class="hidden p-4 mb-6 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
+            {/* Error messages will be inserted here */}
+        </div>
+        
+        <div id="resultsArea" class="prose prose-slate max-w-none bg-slate-50 p-4 sm:p-6 rounded-lg shadow-inner min-h-[200px] max-h-[60vh] overflow-y-auto">
+            <p class="text-slate-500 italic">Search results will appear here.</p>
+        </div>
+
+        <footer class="mt-8 text-center text-sm text-slate-500">
+            <p>Powered by the <a href="https://api.esv.org/" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">ESV Bible API</a> from Crossway.</p>
+            <p>Remember to comply with Crossway's API <a href="https://www.crossway.org/support/esv-api-license-agreement/" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">License Agreement</a>.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const ESV_API_KEY = "08dc10721116dcedcd2f357810c0d2cfd97e5aff"; 
+        // ---------------------
+
+        const searchTermInput = document.getElementById('searchTerm');
+        const searchTypeSelect = document.getElementById('searchType');
+        const searchButton = document.getElementById('searchButton');
+        const resultsArea = document.getElementById('resultsArea');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorDisplay = document.getElementById('errorDisplay');
+        const apiKeyNotice = document.getElementById('apiKeyNotice');
+
+        // Check if API key is placeholder and show notice
+        if (ESV_API_KEY === "YOUR_ESV_API_KEY" || ESV_API_KEY.trim() === "") { // This check might be redundant now but good for template
+            apiKeyNotice.classList.remove('hidden');
+            apiKeyNotice.innerHTML += '<p class="text-sm mt-1"><strong>Functionality will be limited until a valid API key is provided in the script.</strong></p>';
+        } else {
+            apiKeyNotice.classList.add('hidden'); // Hide if key seems to be set
+        }
+
+        searchButton.addEventListener('click', performSearch);
+        searchTermInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        });
+
+        async function performSearch() {
+            const query = searchTermInput.value.trim();
+            const searchType = searchTypeSelect.value;
+
+            if (!query) {
+                displayError("Please enter a search term.");
+                return;
+            }
+            // API key presence check (though it's hardcoded now, good for robustness if it were dynamic)
+            if (ESV_API_KEY.trim() === "" || ESV_API_KEY === "YOUR_ESV_API_KEY") {
+                displayError("API Key is missing or invalid. Please check the script.");
+                apiKeyNotice.classList.remove('hidden'); // Ensure notice is visible if key is somehow still default
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            resultsArea.innerHTML = ''; // Clear previous results
+            errorDisplay.classList.add('hidden');
+            resultsArea.innerHTML = '<p class="text-slate-500 italic">Searching...</p>';
+
+
+            const headers = {
+                'Authorization': `Token ${ESV_API_KEY}`
+            };
+
+            let apiUrl = '';
+            const params = new URLSearchParams();
+            params.append('q', query);
+
+            if (searchType === 'passage') {
+                apiUrl = `https://api.esv.org/v3/passage/text/`;
+                // ESV API passage text parameters (can be customized)
+                params.append('include-passage-references', 'true');
+                params.append('include-verse-numbers', 'true');
+                params.append('include-first-verse-numbers', 'true');
+                params.append('include-footnotes', 'false');
+                params.append('include-footnote-body', 'false');
+                params.append('include-headings', 'true');
+                params.append('include-short-copyright', 'true');
+                // params.append('indent-paragraphs', '2'); // Example of more formatting
+            } else { // keyword or topic
+                apiUrl = `https://api.esv.org/v3/passage/search/`;
+                // ESV API search parameters (can be customized)
+                params.append('page-size', '20'); // Number of results per page
+                params.append('sort', 'relevance'); 
+                params.append('include-passage-horizontal-lines', 'true');
+                params.append('include-heading-horizontal-lines', 'true');
+            }
+            
+            const fullUrl = `${apiUrl}?${params.toString()}`;
+
+            try {
+                const response = await fetch(fullUrl, { headers });
+
+                if (!response.ok) {
+                    let errorMsg = `Error: ${response.status} ${response.statusText}`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData && errorData.detail) {
+                           errorMsg = `API Error: ${errorData.detail}`;
+                        } else if (response.status === 403) {
+                            errorMsg = "API Error: Forbidden. This might be due to an invalid or inactive API key, or exceeding usage limits."
+                        }
+                    } catch (e) { /* Ignore if error response is not JSON */ }
+                    throw new Error(errorMsg);
+                }
+
+                const data = await response.json();
+                displayResults(data, searchType);
+
+            } catch (error) {
+                console.error("Search error:", error);
+                displayError(error.message || "An unexpected error occurred. Check the console for details.");
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        function displayResults(data, searchType) {
+            resultsArea.innerHTML = ''; // Clear loading message
+
+            if (searchType === 'passage') {
+                if (data.passages && data.passages.length > 0) {
+                    const passageContent = data.passages.join('\n\n').replace(/\n/g, '<br>'); // Basic formatting for newlines
+                    const passageHtml = `
+                        <h3 class="text-xl font-semibold text-sky-700 mb-2">${data.canonical}</h3>
+                        <div class="text-base">${passageContent}</div>
+                        ${data.query && data.canonical !== data.query ? `<p class="mt-2 text-sm text-slate-500">Searched for: ${data.query}</p>` : ''}
+                    `;
+                    resultsArea.innerHTML = passageHtml;
+                } else {
+                    resultsArea.innerHTML = '<p class="text-slate-600">No results found for the specified passage.</p>';
+                }
+            } else { // keyword/topic search
+                if (data.results && data.results.length > 0) {
+                    let resultsHtml = `<h3 class="text-xl font-semibold text-sky-700 mb-3">Search Results (${data.total_results} found):</h3>`;
+                    resultsHtml += '<ul class="space-y-6">';
+                    data.results.forEach(result => {
+                        resultsHtml += `
+                            <li class="border-b border-slate-200 pb-4">
+                                <h4 class="text-lg font-semibold text-sky-600">${result.reference}</h4>
+                                <div class="text-sm leading-relaxed">${result.content.replace(/\n+/g, '<br>')}</div>
+                            </li>
+                        `;
+                    });
+                    resultsHtml += '</ul>';
+                    
+                    // Basic Pagination Info (ESV API returns current_page and total_pages)
+                    if (data.total_pages > 1) {
+                        resultsHtml += `<p class="mt-6 text-sm text-slate-500">Page ${data.current_page} of ${data.total_pages}. More results may be available.</p>`;
+                        // Note: Full pagination controls would require more complex state management.
+                    }
+                    resultsArea.innerHTML = resultsHtml;
+                } else {
+                    resultsArea.innerHTML = '<p class="text-slate-600">No results found for your query.</p>';
+                }
+            }
+             // Add copyright if present in the response data (usually for passage text)
+            if (data.copyright) {
+                resultsArea.innerHTML += `<p class="mt-6 text-xs text-slate-400">${data.copyright}</p>`;
+            } else if (data.results && data.results.length > 0) { // Default copyright for search if not provided per result
+                 resultsArea.innerHTML += `<p class="mt-6 text-xs text-slate-400">ESV® Bible (The Holy Bible, English Standard Version®) copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. Used by permission. All rights reserved.</p>`;
+            }
+        }
+
+        function displayError(message) {
+            errorDisplay.innerHTML = `<p>${message}</p>`;
+            errorDisplay.classList.remove('hidden');
+            resultsArea.innerHTML = '<p class="text-slate-500 italic">Search results will appear here.</p>'; // Reset results area
+        }
+
+    </script>
+</body>
+</html>
