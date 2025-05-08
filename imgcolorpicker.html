@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Color Picker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles if needed, for now Tailwind should suffice */
+        body {
+            font-family: 'Inter', sans-serif; /* Tailwind's default sans-serif is good, this is an example */
+        }
+        /* Ensure the tooltip doesn't flicker or intercept mouse events on the canvas */
+        #colorTooltip {
+            pointer-events: none;
+            transition: opacity 0.1s ease-in-out; /* Smooth appearance/disappearance */
+        }
+        /* Style for the file input label to behave like a button/dropzone */
+        #uploadContainer label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4 selection:bg-blue-200">
+
+    <div class="w-full max-w-3xl bg-white shadow-2xl rounded-xl p-6 md:p-8 space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">Image Color Picker</h1>
+            <p class="text-gray-600 mt-2">Hover over the image to see the color hex code. Click to copy.</p>
+        </header>
+
+        <div id="uploadContainer" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition-colors duration-300 group bg-gray-50 hover:bg-blue-50">
+            <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            <label for="imageUpload" class="cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-gray-400 group-hover:text-blue-600 transition-colors duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <p class="mt-3 text-sm font-medium text-gray-700 group-hover:text-blue-700">Click to upload an image</p>
+                <p class="text-xs text-gray-500 group-hover:text-blue-500">or drag and drop</p>
+                <p class="text-xs text-gray-500 mt-1">PNG, JPG, GIF, WebP</p>
+            </label>
+        </div>
+
+        <div id="imageArea" class="hidden space-y-4">
+            <div class="relative mx-auto border border-gray-300 rounded-lg shadow-sm overflow-hidden" style="max-width: 100%; max-height: 65vh;">
+                <canvas id="imageCanvas" class="block" style="max-width: 100%; max-height: 100%; object-fit: contain; cursor: crosshair;"></canvas>
+                <div id="colorTooltip" class="absolute hidden p-2 bg-black bg-opacity-80 text-white text-xs rounded-md shadow-lg flex items-center space-x-2 z-10">
+                    <div id="tooltipColorPreview" class="w-4 h-4 rounded-sm border border-gray-400"></div>
+                    <span id="tooltipHexCode" class="font-mono"></span>
+                </div>
+            </div>
+
+            <div id="colorInfo" class="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-lg shadow-sm">
+                <div class="flex items-center space-x-3">
+                    <div id="selectedColorPreview" class="w-10 h-10 rounded-md border-2 border-gray-300 shadow-inner"></div>
+                    <div>
+                        <p class="text-xs text-gray-500">Last Clicked Color:</p>
+                        <p class="text-xl font-mono text-gray-800" id="selectedHexCode">#000000</p>
+                    </div>
+                </div>
+                <button id="copyButton" class="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-150 text-sm font-medium">
+                    Copy Hex
+                </button>
+            </div>
+            <div id="copyMessage" class="text-center text-green-600 font-medium h-5 transition-opacity duration-300 opacity-0">
+                Copied to clipboard!
+            </div>
+             <button id="resetButton" class="w-full mt-2 px-6 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-50 transition-colors duration-150 text-sm font-medium">
+                Upload New Image
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Get DOM elements
+        const imageUploadInput = document.getElementById('imageUpload');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const imageArea = document.getElementById('imageArea');
+        const imageCanvas = document.getElementById('imageCanvas');
+        const ctx = imageCanvas.getContext('2d');
+
+        const colorTooltip = document.getElementById('colorTooltip');
+        const tooltipColorPreview = document.getElementById('tooltipColorPreview');
+        const tooltipHexCode = document.getElementById('tooltipHexCode');
+
+        const selectedColorPreview = document.getElementById('selectedColorPreview');
+        const selectedHexCode = document.getElementById('selectedHexCode');
+        const copyButton = document.getElementById('copyButton');
+        const copyMessage = document.getElementById('copyMessage');
+        const resetButton = document.getElementById('resetButton');
+
+        let currentHex = '#000000'; // Store the last clicked hex
+
+        // --- Helper Function: Convert RGBA to Hex ---
+        function rgbToHex(r, g, b) {
+            if (r > 255 || g > 255 || b > 255) throw "Invalid color component";
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+        }
+
+        // --- Image Loading and Canvas Drawing ---
+        function handleImageUpload(file) {
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        // Set canvas dimensions to image's natural dimensions
+                        imageCanvas.width = img.naturalWidth;
+                        imageCanvas.height = img.naturalHeight;
+                        
+                        // Draw the image onto the canvas
+                        ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+                        
+                        // Show image area and hide upload container
+                        uploadContainer.classList.add('hidden');
+                        imageArea.classList.remove('hidden');
+
+                        // Set initial selected color (e.g., center pixel or default)
+                        const initialX = Math.floor(img.naturalWidth / 2);
+                        const initialY = Math.floor(img.naturalHeight / 2);
+                        const pixelData = ctx.getImageData(initialX, initialY, 1, 1).data;
+                        currentHex = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+                        selectedHexCode.textContent = currentHex;
+                        selectedColorPreview.style.backgroundColor = currentHex;
+
+                    }
+                    img.onerror = function() {
+                        alert('Error loading image. Please try a different file.');
+                        resetToUploadState();
+                    }
+                    img.src = e.target.result;
+                }
+                reader.onerror = function() {
+                    alert('Error reading file. Please try again.');
+                    resetToUploadState();
+                }
+                reader.readAsDataURL(file);
+            } else {
+                alert('Please upload a valid image file (PNG, JPG, GIF, WebP).');
+            }
+        }
+
+        // Event listener for file input change
+        imageUploadInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                handleImageUpload(file);
+            }
+        });
+
+        // --- Drag and Drop Functionality ---
+        uploadContainer.addEventListener('dragover', (event) => {
+            event.preventDefault(); // Prevent default behavior (opening file)
+            uploadContainer.classList.add('border-blue-500', 'bg-blue-50');
+        });
+
+        uploadContainer.addEventListener('dragleave', () => {
+            uploadContainer.classList.remove('border-blue-500', 'bg-blue-50');
+        });
+
+        uploadContainer.addEventListener('drop', (event) => {
+            event.preventDefault(); // Prevent default behavior
+            uploadContainer.classList.remove('border-blue-500', 'bg-blue-50');
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                handleImageUpload(file);
+            }
+        });
+        
+        // REMOVED: Redundant click listener on uploadContainer
+        // uploadContainer.addEventListener('click', () => {
+        //     if (event.target.id !== 'imageUpload') { 
+        //          imageUploadInput.click();
+        //     }
+        // });
+
+
+        // --- Canvas Mouse Interactions ---
+        imageCanvas.addEventListener('mousemove', (event) => {
+            // Calculate mouse position relative to the canvas's actual pixels
+            const rect = imageCanvas.getBoundingClientRect();
+            const scaleX = imageCanvas.width / rect.width;
+            const scaleY = imageCanvas.height / rect.height;
+            
+            const canvasX = Math.floor((event.clientX - rect.left) * scaleX);
+            const canvasY = Math.floor((event.clientY - rect.top) * scaleY);
+
+            // Ensure coordinates are within canvas bounds
+            if (canvasX >= 0 && canvasX < imageCanvas.width && canvasY >= 0 && canvasY < imageCanvas.height) {
+                const pixelData = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+                const hex = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+
+                tooltipHexCode.textContent = hex;
+                tooltipColorPreview.style.backgroundColor = hex;
+
+                let tooltipX = event.clientX - rect.left + 15;
+                let tooltipY = event.clientY - rect.top + 15;
+
+                if (tooltipX + colorTooltip.offsetWidth > rect.width) {
+                    tooltipX = event.clientX - rect.left - colorTooltip.offsetWidth - 5;
+                }
+                if (tooltipY + colorTooltip.offsetHeight > rect.height) {
+                    tooltipY = event.clientY - rect.top - colorTooltip.offsetHeight - 5;
+                }
+                
+                colorTooltip.style.left = tooltipX + 'px';
+                colorTooltip.style.top = tooltipY + 'px';
+                colorTooltip.classList.remove('hidden');
+            } else {
+                colorTooltip.classList.add('hidden');
+            }
+        });
+
+        imageCanvas.addEventListener('mouseleave', () => {
+            colorTooltip.classList.add('hidden');
+        });
+
+        imageCanvas.addEventListener('click', (event) => {
+            const rect = imageCanvas.getBoundingClientRect();
+            const scaleX = imageCanvas.width / rect.width;
+            const scaleY = imageCanvas.height / rect.height;
+            
+            const canvasX = Math.floor((event.clientX - rect.left) * scaleX);
+            const canvasY = Math.floor((event.clientY - rect.top) * scaleY);
+
+            if (canvasX >= 0 && canvasX < imageCanvas.width && canvasY >= 0 && canvasY < imageCanvas.height) {
+                const pixelData = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+                currentHex = rgbToHex(pixelData[0], pixelData[1], pixelData[2]);
+
+                selectedHexCode.textContent = currentHex;
+                selectedColorPreview.style.backgroundColor = currentHex;
+
+                copyToClipboard(currentHex);
+            }
+        });
+
+        // --- Copy to Clipboard ---
+        function copyToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    copyMessage.textContent = `Copied: ${text}`;
+                    copyMessage.classList.remove('opacity-0');
+                    copyMessage.classList.add('opacity-100');
+                    setTimeout(() => {
+                        copyMessage.classList.remove('opacity-100');
+                        copyMessage.classList.add('opacity-0');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy text: ', err);
+                    try {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.focus();
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        
+                        copyMessage.textContent = `Copied: ${text}`;
+                        copyMessage.classList.remove('opacity-0');
+                        copyMessage.classList.add('opacity-100');
+                         setTimeout(() => {
+                            copyMessage.classList.remove('opacity-100');
+                            copyMessage.classList.add('opacity-0');
+                        }, 2000);
+
+                    } catch (e) {
+                        alert('Failed to copy. Your browser might not support this feature or permissions are denied.');
+                    }
+                });
+            } else {
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    
+                    copyMessage.textContent = `Copied: ${text}`;
+                    copyMessage.classList.remove('opacity-0');
+                    copyMessage.classList.add('opacity-100');
+                     setTimeout(() => {
+                        copyMessage.classList.remove('opacity-100');
+                        copyMessage.classList.add('opacity-0');
+                    }, 2000);
+                } catch (e) {
+                    alert('Failed to copy. Your browser might not support this feature.');
+                }
+            }
+        }
+
+        copyButton.addEventListener('click', () => {
+            copyToClipboard(selectedHexCode.textContent);
+        });
+
+        // --- Reset Functionality ---
+        function resetToUploadState() {
+            imageArea.classList.add('hidden');
+            uploadContainer.classList.remove('hidden');
+            imageUploadInput.value = ''; // Clear the file input
+            if (ctx) {
+                 ctx.clearRect(0, 0, imageCanvas.width, imageCanvas.height); // Clear canvas
+            }
+            selectedHexCode.textContent = '#000000';
+            selectedColorPreview.style.backgroundColor = '#000000';
+            colorTooltip.classList.add('hidden');
+        }
+
+        resetButton.addEventListener('click', resetToUploadState);
+
+    </script>
+</body>
+</html>
