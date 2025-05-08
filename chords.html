@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chord Progression Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top for longer content */
+            min-height: 100vh;
+            background-color: #f0f4f8; /* A light, cool gray */
+            padding: 1rem;
+            color: #334155; /* slate-700 */
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #475569; /* slate-600 */
+        }
+        .control-group select, .control-group input[type="checkbox"] {
+            width: 100%;
+            padding: 0.65rem;
+            border: 1px solid #cbd5e1; /* slate-300 */
+            border-radius: 0.375rem; /* rounded-md */
+            background-color: white;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        .control-group select:focus, .control-group input[type="checkbox"]:focus {
+            border-color: #3b82f6; /* blue-500 */
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        .control-group input[type="checkbox"] {
+            width: auto; /* Checkbox doesn't need full width */
+            margin-right: 0.5rem;
+        }
+        .button-primary {
+            padding: 0.75rem 1.5rem;
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s ease-in-out;
+            width: 100%;
+        }
+        .button-primary:hover {
+            background-color: #2563eb; /* blue-600 */
+        }
+        #progressionOutput {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background-color: white;
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            min-height: 100px;
+            border: 1px solid #e2e8f0; /* slate-200 */
+        }
+        #progressionOutput h3 {
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 600;
+            color: #1e293b; /* slate-800 */
+            margin-bottom: 0.5rem;
+        }
+        #progressionOutput p {
+            font-size: 1.25rem; /* text-xl */
+            color: #3b82f6; /* blue-500 */
+            font-weight: 500;
+            word-spacing: 0.25em; /* More space between chord names */
+            line-height: 1.6;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            color: #475569;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg">
+        <header class="mb-6 text-center">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Chord Progression Generator</h1>
+            <p class="text-gray-600 mt-1 text-sm sm:text-base">Generate random musical chord progressions.</p>
+        </header>
+
+        <main class="space-y-6">
+            <div class="control-group">
+                <label for="keySelect">Key:</label>
+                <select id="keySelect">
+                    <option value="Any">Any Key</option>
+                    </select>
+            </div>
+
+            <div class="control-group">
+                <label for="genreSelect">Genre / Style:</label>
+                <select id="genreSelect">
+                    </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="useSeventhChords" class="checkbox-label">
+                    <input type="checkbox" id="useSeventhChords" checked>
+                    Use 7th Chords (when applicable)
+                </label>
+            </div>
+
+            <div>
+                <button id="generateBtn" class="button-primary">Generate Progression</button>
+            </div>
+
+            <div id="progressionOutput">
+                <h3 id="outputKey">Key: --</h3>
+                <p id="outputProgression">Your chord progression will appear here.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- Music Theory Definitions ---
+        const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+        const MAJOR_SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11]; // Semitones from root
+        const MINOR_SCALE_INTERVALS = [0, 2, 3, 5, 7, 8, 10]; // Natural minor
+
+        const DIATONIC_CHORDS_MAJOR = {
+            'I':   { triad: 'Maj', seventh: 'Maj7' },
+            'ii':  { triad: 'min', seventh: 'min7' },
+            'iii': { triad: 'min', seventh: 'min7' },
+            'IV':  { triad: 'Maj', seventh: 'Maj7' },
+            'V':   { triad: 'Maj', seventh: 'Dom7' },
+            'vi':  { triad: 'min', seventh: 'min7' },
+            'vii°':{ triad: 'dim', seventh: 'min7b5' }
+        };
+
+        const DIATONIC_CHORDS_MINOR = { // Natural Minor
+            'i':    { triad: 'min', seventh: 'min7' },
+            'ii°':  { triad: 'dim', seventh: 'min7b5' },
+            'bIII': { triad: 'Maj', seventh: 'Maj7' },
+            'iv':   { triad: 'min', seventh: 'min7' },
+            'v':    { triad: 'min', seventh: 'min7' }, // Often V (Dom7) from harmonic/melodic minor
+            'bVI':  { triad: 'Maj', seventh: 'Maj7' },
+            'bVII': { triad: 'Maj', seventh: 'Dom7' } // Or Maj7
+        };
+        
+        const ROMAN_TO_DEGREE = {
+            'I': 0, 'II': 1, 'III': 2, 'IV': 3, 'V': 4, 'VI': 5, 'VII': 6
+        };
+
+        const GENRE_PROGRESSIONS = {
+            any: {
+                name: "Any Genre (Common)",
+                keyTypePreference: ['major', 'minor'],
+                patterns: [
+                    ['I', 'IV', 'V', 'I'], ['I', 'V', 'vi', 'IV'], ['ii', 'V', 'I'],
+                    ['i', 'iv', 'v', 'i'], ['i', 'bVI', 'bIII', 'bVII'], ['i', 'v', 'iv', 'i']
+                ]
+            },
+            popRock: {
+                name: "Pop / Rock",
+                keyTypePreference: ['major'],
+                patterns: [
+                    ['I', 'V', 'vi', 'IV'], ['vi', 'IV', 'I', 'V'], ['I', 'IV', 'V', 'V'],
+                    ['I', 'vi', 'IV', 'V'], ['I', 'IV', 'I', 'V'], ['I', 'ii', 'IV', 'V']
+                ]
+            },
+            jazzMajor: {
+                name: "Jazz (Major Key)",
+                keyTypePreference: ['major'],
+                forceSeventh: true,
+                patterns: [
+                    ['ii', 'V', 'I'], ['I', 'vi', 'ii', 'V'], ['I', 'IV', 'iii', 'vi', 'ii', 'V', 'I'],
+                    ['iii', 'vi', 'ii', 'V'], ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°']
+                ]
+            },
+            jazzMinor: {
+                name: "Jazz (Minor Key)",
+                keyTypePreference: ['minor'],
+                forceSeventh: true,
+                patterns: [
+                    ['i', 'ii°', 'v', 'i'], 
+                    ['i', 'iv', 'v', 'i'],
+                    ['i', 'bVI', 'ii°', 'v'],
+                    ['ii°', 'v', 'i'] 
+                ]
+            },
+            blues: {
+                name: "Blues (12-Bar)",
+                keyTypePreference: ['major'], 
+                forceDominant7th: true, 
+                patterns: [
+                    ['I', 'I', 'I', 'I', 'IV', 'IV', 'I', 'I', 'V', 'IV', 'I', 'I'], 
+                    ['I', 'IV', 'I', 'I', 'IV', 'IV', 'I', 'I', 'V', 'IV', 'I', 'V']
+                ]
+            }
+        };
+
+        // --- Helper Functions ---
+        function getRandomElement(arr) {
+            if (!arr || arr.length === 0) return undefined; // Guard against empty arrays
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function getNoteName(index, useFlat = false) {
+            const noteSet = useFlat ? NOTES_FLAT : NOTES;
+            return noteSet[index % 12];
+        }
+
+        function getScaleNotes(rootNoteName, scaleType) {
+            let rootIndex = NOTES.indexOf(rootNoteName); // Prioritize sharp/natural names for root
+            if (rootIndex === -1) rootIndex = NOTES_FLAT.indexOf(rootNoteName);
+            if (rootIndex === -1) {
+                console.error("Invalid root note for scale:", rootNoteName);
+                return [];
+            }
+
+            const intervals = scaleType === 'major' ? MAJOR_SCALE_INTERVALS : MINOR_SCALE_INTERVALS;
+            const flatHeavyKeys = ['F', 'Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'];
+            const preferFlats = flatHeavyKeys.includes(rootNoteName) || rootNoteName.includes('b');
+
+            return intervals.map(interval => getNoteName(rootIndex + interval, preferFlats));
+        }
+
+        function getChord(keyRootNote, keyType, romanNumeralStr, useGlobalSeventh, genreRules = {}) {
+            // 1. Parse Roman Numeral for Degree Index
+            let accidentalOffset = 0;
+            if (romanNumeralStr.startsWith('b')) {
+                accidentalOffset = -1;
+            } else if (romanNumeralStr.startsWith('#')) {
+                accidentalOffset = 1;
+            }
+            
+            // Create a version of the Roman numeral string that's just the core numeral (I, II, V, etc.)
+            // This is for looking up the degreeIndex (0-6)
+            let romanForDegreeLookup = romanNumeralStr.toUpperCase();
+            if (romanForDegreeLookup.startsWith('B') || romanForDegreeLookup.startsWith('#')) {
+                romanForDegreeLookup = romanForDegreeLookup.substring(1); // Remove leading 'b' or '#'
+            }
+            romanForDegreeLookup = romanForDegreeLookup.replace('°', ''); // Remove '°'
+
+            const degreeIndex = ROMAN_TO_DEGREE[romanForDegreeLookup];
+
+            if (degreeIndex === undefined) {
+                console.error(`Invalid Roman for degree lookup: Original '${romanNumeralStr}', Processed '${romanForDegreeLookup}'`);
+                return `InvalidRoman(${romanNumeralStr})`;
+            }
+
+            // 2. Get Scale and Chord Root Note
+            const scale = getScaleNotes(keyRootNote, keyType);
+            if (!scale.length) {
+                console.error(`Could not get scale for key: ${keyRootNote} ${keyType}`);
+                return `InvalidKey(${keyRootNote})`;
+            }
+            
+            if (degreeIndex >= scale.length) { // Bounds check for degreeIndex
+                console.error(`Degree index ${degreeIndex} out of bounds for scale ${scale.join(', ')} (key: ${keyRootNote} ${keyType}, roman: ${romanNumeralStr})`);
+                return `InvalidDegree(${romanNumeralStr})`;
+            }
+            const chordRootNoteFromScale = scale[degreeIndex];
+
+            let numericIndexOfChordRoot = NOTES.indexOf(chordRootNoteFromScale);
+            if (numericIndexOfChordRoot === -1) { // Try with flat names if not found
+                numericIndexOfChordRoot = NOTES_FLAT.indexOf(chordRootNoteFromScale);
+            }
+            
+            if (numericIndexOfChordRoot === -1) { // Should not happen if getScaleNotes is correct
+                 console.error(`Could not find index for note '${chordRootNoteFromScale}' from scale.`);
+                return `InvalidNoteInScale(${chordRootNoteFromScale})`;
+            }
+            
+            const finalChordRootNote = getNoteName(numericIndexOfChordRoot + accidentalOffset, chordRootNoteFromScale.includes('b'));
+
+            // 3. Determine Chord Quality
+            const diatonicSet = keyType === 'major' ? DIATONIC_CHORDS_MAJOR : DIATONIC_CHORDS_MINOR;
+            
+            // The romanNumeralStr from the pattern should be the primary key for diatonicInfo.
+            let diatonicInfo = diatonicSet[romanNumeralStr]; 
+
+            // Fallback logic if direct match fails (e.g. pattern uses "I" in minor context where "i" is defined)
+            if (!diatonicInfo) {
+                if (keyType === 'minor' && diatonicSet[romanNumeralStr.toLowerCase()]) {
+                    diatonicInfo = diatonicSet[romanNumeralStr.toLowerCase()];
+                } else if (keyType === 'major') {
+                    // For major, 'ii', 'iii', 'vi', 'vii°' are lowercase in definitions.
+                    const potentialMajorKey = ['ii', 'iii', 'vi', 'vii°'].includes(romanNumeralStr.toLowerCase()) 
+                                            ? romanNumeralStr.toLowerCase() 
+                                            : romanNumeralStr.toUpperCase();
+                    if (diatonicSet[potentialMajorKey]) {
+                        diatonicInfo = diatonicSet[potentialMajorKey];
+                    }
+                }
+            }
+
+            if (!diatonicInfo) {
+                console.error(`No diatonic info for: '${romanNumeralStr}' in ${keyType} key. Tried direct lookup and case adjustment.`);
+                return `NoInfo(${romanNumeralStr})`;
+            }
+            
+            let quality;
+            if (genreRules.forceDominant7th) {
+                quality = 'Dom7';
+            } else if (genreRules.forceSeventh || useGlobalSeventh) {
+                quality = diatonicInfo.seventh;
+            } else {
+                quality = diatonicInfo.triad;
+            }
+            
+            let chordName = finalChordRootNote;
+            if (quality === 'Maj') chordName += ""; 
+            else if (quality === 'min') chordName += "m";
+            else if (quality === 'dim') chordName += "dim";
+            else if (quality === 'aug') chordName += "aug";
+            else if (quality === 'Maj7') chordName += "maj7";
+            else if (quality === 'min7') chordName += "m7";
+            else if (quality === 'Dom7') chordName += "7";
+            else if (quality === 'dim7') chordName += "dim7";
+            else if (quality === 'min7b5') chordName += "m7b5";
+            else chordName += `(${quality})`;
+
+            return chordName;
+        }
+
+
+        // --- UI Logic ---
+        const keySelect = document.getElementById('keySelect');
+        const genreSelect = document.getElementById('genreSelect');
+        const useSeventhChordsCheckbox = document.getElementById('useSeventhChords');
+        const generateBtn = document.getElementById('generateBtn');
+        const outputKeyDisplay = document.getElementById('outputKey');
+        const outputProgressionDisplay = document.getElementById('outputProgression');
+
+        function populateDropdowns() {
+            NOTES.forEach(note => {
+                const option = document.createElement('option');
+                option.value = note;
+                option.textContent = note;
+                keySelect.appendChild(option);
+            });
+
+            for (const genreKey in GENRE_PROGRESSIONS) {
+                const option = document.createElement('option');
+                option.value = genreKey;
+                option.textContent = GENRE_PROGRESSIONS[genreKey].name;
+                genreSelect.appendChild(option);
+            }
+        }
+
+        function generateAndDisplayProgression() {
+            const selectedKeyRoot = keySelect.value;
+            const selectedGenreKey = genreSelect.value;
+            const useGlobalSeventh = useSeventhChordsCheckbox.checked;
+
+            const genreInfo = GENRE_PROGRESSIONS[selectedGenreKey];
+            if (!genreInfo) {
+                outputProgressionDisplay.textContent = "Selected genre not found.";
+                return;
+            }
+            
+            let actualKeyRoot = selectedKeyRoot;
+            let actualKeyType;
+
+            if (selectedKeyRoot === "Any") {
+                actualKeyRoot = getRandomElement(NOTES);
+            }
+
+            if (genreInfo.keyTypePreference.length === 1) {
+                actualKeyType = genreInfo.keyTypePreference[0];
+            } else { 
+                actualKeyType = getRandomElement(genreInfo.keyTypePreference);
+            }
+            
+            let availablePatterns = genreInfo.patterns;
+            if (selectedGenreKey === "any") {
+                availablePatterns = genreInfo.patterns.filter(pattern => {
+                    if (!pattern || pattern.length === 0) return false;
+                    const firstRoman = pattern[0];
+                    const isMinorPattern = firstRoman === firstRoman.toLowerCase() && firstRoman !== firstRoman.toUpperCase(); // Heuristic
+                    return (actualKeyType === 'minor' && isMinorPattern) || (actualKeyType === 'major' && !isMinorPattern);
+                });
+                if (availablePatterns.length === 0) { 
+                    availablePatterns = genreInfo.patterns; 
+                }
+            }
+
+            const progressionPattern = getRandomElement(availablePatterns);
+            if (!progressionPattern || progressionPattern.length === 0) {
+                outputProgressionDisplay.textContent = "Could not find a suitable pattern for this combination.";
+                outputKeyDisplay.textContent = `Key: ${actualKeyRoot} ${actualKeyType}`;
+                return;
+            }
+
+            const chords = progressionPattern.map(romanNumeral => 
+                getChord(actualKeyRoot, actualKeyType, romanNumeral, useGlobalSeventh, genreInfo)
+            );
+
+            outputKeyDisplay.textContent = `Key: ${actualKeyRoot} ${actualKeyType.charAt(0).toUpperCase() + actualKeyType.slice(1)}`;
+            outputProgressionDisplay.textContent = chords.join('  -  ');
+        }
+
+        // Initialize
+        populateDropdowns();
+        generateBtn.addEventListener('click', generateAndDisplayProgression);
+        
+        // Generate one on load
+        generateAndDisplayProgression();
+
+    </script>
+</body>
+</html>
