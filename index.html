@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to PDF Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* Custom font - Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Ensure the html and body take full height for centering */
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        /* Custom style for the file input button */
+        .file-input-button {
+            background-color: #4A90E2; /* Blue background */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.375rem; /* Rounded corners */
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            font-weight: 500;
+        }
+        .file-input-button:hover {
+            background-color: #357ABD; /* Darker blue on hover */
+        }
+        .convert-button {
+            background-color: #50E3C2; /* Teal background */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.375rem; /* Rounded corners */
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            font-weight: 500;
+        }
+        .convert-button:hover {
+            background-color: #38A89D; /* Darker teal on hover */
+        }
+        .convert-button:disabled {
+            background-color: #9CA3AF; /* Gray when disabled */
+            cursor: not-allowed;
+        }
+        /* Simple loading spinner */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #4A90E2; /* Blue color for spinner */
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-8 md:p-12 rounded-xl shadow-2xl w-full max-w-lg text-center">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Image to PDF Converter</h1>
+            <p class="text-gray-600 mt-2">Upload an image (JPG, PNG, GIF) and convert it to a PDF instantly.</p>
+        </header>
+
+        <div class="mb-6">
+            <label for="imageUpload" class="file-input-button inline-block">
+                Select Image
+            </label>
+            <input type="file" id="imageUpload" class="hidden" accept="image/jpeg, image/png, image/gif">
+            <p id="fileName" class="text-sm text-gray-500 mt-3"></p>
+        </div>
+
+        <div id="imagePreviewContainer" class="mb-6 h-64 bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden border border-gray-200" style="display: none;">
+            <img id="imagePreview" src="#" alt="Image Preview" class="max-h-full max-w-full object-contain">
+        </div>
+        <div id="noPreviewMessage" class="mb-6 h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400 border border-gray-200">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-image mb-2" viewBox="0 0 16 16">
+              <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+              <path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/>
+            </svg>
+            <span class="ml-2">Image preview will appear here</span>
+        </div>
+
+
+        <div class="mb-6">
+            <button id="convertToPdfButton" class="convert-button w-full" disabled>
+                Convert to PDF & Download
+            </button>
+        </div>
+
+        <div id="messageArea" class="text-sm min-h-[20px]">
+            </div>
+        <div id="loadingSpinner" class="spinner mx-auto mt-4" style="display: none;"></div>
+
+    </div>
+
+    <footer class="text-center text-gray-500 mt-8 pb-4">
+        <p>&copy; <span id="currentYear"></span> Image to PDF Converter. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Ensure jsPDF is loaded before we use it
+        // window.jsPDF is an older way, jspdf.jsPDF is for newer versions with UMD
+        const { jsPDF } = window.jspdf;
+
+        // DOM element references
+        const imageUpload = document.getElementById('imageUpload');
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const noPreviewMessage = document.getElementById('noPreviewMessage');
+        const convertToPdfButton = document.getElementById('convertToPdfButton');
+        const messageArea = document.getElementById('messageArea');
+        const fileNameDisplay = document.getElementById('fileName');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const currentYearSpan = document.getElementById('currentYear');
+
+        // Set current year in footer
+        currentYearSpan.textContent = new Date().getFullYear();
+
+        let selectedFile = null; // To store the selected image file
+        let imageDataUrl = null; // To store the data URL of the image
+
+        // Event listener for file input change
+        imageUpload.addEventListener('change', function(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                // Validate file type (optional, but good practice)
+                if (!['image/jpeg', 'image/png', 'image/gif'].includes(selectedFile.type)) {
+                    messageArea.textContent = 'Error: Please select a JPG, PNG, or GIF image.';
+                    messageArea.className = 'text-red-500 text-sm min-h-[20px]';
+                    convertToPdfButton.disabled = true;
+                    imagePreviewContainer.style.display = 'none';
+                    noPreviewMessage.style.display = 'flex';
+                    fileNameDisplay.textContent = '';
+                    selectedFile = null;
+                    imageDataUrl = null;
+                    return;
+                }
+
+                fileNameDisplay.textContent = `Selected: ${selectedFile.name}`;
+                messageArea.textContent = ''; // Clear previous messages
+                messageArea.className = 'text-green-600 text-sm min-h-[20px]';
+
+
+                // Read the image file as a data URL
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageDataUrl = e.target.result;
+                    imagePreview.src = imageDataUrl;
+                    imagePreviewContainer.style.display = 'flex';
+                    noPreviewMessage.style.display = 'none';
+                    convertToPdfButton.disabled = false; // Enable button
+                    messageArea.textContent = 'Image loaded. Ready to convert.';
+                }
+                reader.onerror = function() {
+                    messageArea.textContent = 'Error: Could not read the image file.';
+                    messageArea.className = 'text-red-500 text-sm min-h-[20px]';
+                    convertToPdfButton.disabled = true;
+                    selectedFile = null;
+                    imageDataUrl = null;
+                }
+                reader.readAsDataURL(selectedFile);
+            } else {
+                // No file selected or selection cancelled
+                imagePreview.src = '#';
+                imagePreviewContainer.style.display = 'none';
+                noPreviewMessage.style.display = 'flex';
+                convertToPdfButton.disabled = true;
+                fileNameDisplay.textContent = '';
+                messageArea.textContent = 'No image selected.';
+                messageArea.className = 'text-gray-500 text-sm min-h-[20px]';
+                selectedFile = null;
+                imageDataUrl = null;
+            }
+        });
+
+        // Event listener for the convert button
+        convertToPdfButton.addEventListener('click', function() {
+            if (!imageDataUrl || !selectedFile) {
+                messageArea.textContent = 'Error: No image selected or image data is missing.';
+                messageArea.className = 'text-red-500 text-sm min-h-[20px]';
+                return;
+            }
+
+            messageArea.textContent = 'Converting to PDF...';
+            messageArea.className = 'text-blue-600 text-sm min-h-[20px]';
+            loadingSpinner.style.display = 'block'; // Show spinner
+            convertToPdfButton.disabled = true; // Disable button during conversion
+
+            try {
+                // Create a new jsPDF instance.
+                // Default is portrait, A4 size.
+                const pdf = new jsPDF();
+
+                // Get image dimensions
+                const img = new Image();
+                img.onload = function() {
+                    const imgWidth = this.width;
+                    const imgHeight = this.height;
+
+                    // Get PDF page dimensions (A4: 210mm x 297mm)
+                    const pdfPageWidth = pdf.internal.pageSize.getWidth();
+                    const pdfPageHeight = pdf.internal.pageSize.getHeight();
+
+                    // Calculate scaling factor to fit image within page, maintaining aspect ratio
+                    const widthRatio = pdfPageWidth / imgWidth;
+                    const heightRatio = pdfPageHeight / imgHeight;
+                    const scale = Math.min(widthRatio, heightRatio); // Use the smaller ratio to ensure it fits
+
+                    // Calculate scaled image dimensions
+                    const scaledWidth = imgWidth * scale;
+                    const scaledHeight = imgHeight * scale;
+
+                    // Calculate position to center the image on the page
+                    const x = (pdfPageWidth - scaledWidth) / 2;
+                    const y = (pdfPageHeight - scaledHeight) / 2;
+
+                    // Add the image to the PDF
+                    // Parameters: imageData, format, x, y, width, height
+                    // Format can be 'JPEG', 'PNG', etc. jsPDF often infers it from the data URL.
+                    let imageFormat = selectedFile.type.split('/')[1].toUpperCase();
+                    if (imageFormat === 'JPEG') imageFormat = 'JPG'; // jsPDF uses JPG for JPEG
+
+                    // Add a new page for the image (optional, if you want a title page first)
+                    // pdf.addPage();
+
+                    pdf.addImage(imageDataUrl, imageFormat, x, y, scaledWidth, scaledHeight);
+
+                    // Generate a filename for the PDF
+                    const originalFileName = selectedFile.name.substring(0, selectedFile.name.lastIndexOf('.'));
+                    const pdfFileName = `${originalFileName}.pdf`;
+
+                    // Save the PDF (this will trigger a download in the browser)
+                    pdf.save(pdfFileName);
+
+                    messageArea.textContent = `Successfully converted! "${pdfFileName}" downloaded.`;
+                    messageArea.className = 'text-green-600 text-sm min-h-[20px]';
+                    loadingSpinner.style.display = 'none'; // Hide spinner
+                    // Keep button disabled until a new file is selected or to prevent re-conversion of same file
+                    // Or re-enable if you want: convertToPdfButton.disabled = false;
+                };
+                img.onerror = function() {
+                    messageArea.textContent = 'Error: Could not load image dimensions for PDF conversion.';
+                    messageArea.className = 'text-red-500 text-sm min-h-[20px]';
+                    loadingSpinner.style.display = 'none'; // Hide spinner
+                    convertToPdfButton.disabled = false; // Re-enable button on error
+                };
+                img.src = imageDataUrl; // This triggers the img.onload or img.onerror
+
+            } catch (error) {
+                console.error("Error during PDF conversion:", error);
+                messageArea.textContent = 'Error: Could not convert to PDF. Check console for details.';
+                messageArea.className = 'text-red-500 text-sm min-h-[20px]';
+                loadingSpinner.style.display = 'none'; // Hide spinner
+                convertToPdfButton.disabled = false; // Re-enable button on error
+            }
+        });
+
+    </script>
+
+</body>
+</html>
