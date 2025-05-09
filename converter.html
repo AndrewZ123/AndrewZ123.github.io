@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client-Side File Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .custom-file-input::-webkit-file-upload-button {
+            visibility: hidden;
+        }
+        .custom-file-input::before {
+            content: 'Select file';
+            display: inline-block;
+            background: linear-gradient(to bottom, #f9fafb, #e5e7eb);
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 1rem;
+            outline: none;
+            white-space: nowrap;
+            -webkit-user-select: none;
+            user-select: none;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        .custom-file-input:hover::before {
+            border-color: #9ca3af;
+        }
+        .custom-file-input:active::before {
+            background-color: #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col items-center py-8 px-4 selection:bg-sky-200">
+
+    <div class="w-full max-w-xl bg-white shadow-2xl rounded-xl p-6 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-sky-700">Simple File Converter</h1>
+            <p class="text-slate-600 mt-2">Convert files directly in your browser. Select a file and choose the target format.</p>
+            <p class="text-xs text-slate-500 mt-1">Note: Conversions are client-side and have limitations.</p>
+        </header>
+
+        <div class="space-y-6">
+            <div>
+                <label for="fileInput" class="block text-sm font-medium text-slate-700 mb-1">Choose File:</label>
+                <input type="file" id="fileInput" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 transition-colors duration-150 cursor-pointer">
+                <p id="fileNameDisplay" class="text-xs text-slate-500 mt-1 truncate"></p>
+            </div>
+
+            <div>
+                <label for="outputFormat" class="block text-sm font-medium text-slate-700 mb-1">Convert To:</label>
+                <select id="outputFormat" class="w-full px-3 py-2 rounded-lg border-slate-300 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 shadow-sm bg-white">
+                    <option value="jpg">.jpg (Image)</option>
+                    <option value="png">.png (Image)</option>
+                    <option value="txt">.txt (Text)</option>
+                    <option value="csv">.csv (Comma-Separated Values)</option>
+                    <option value="html">.html (HyperText Markup Language)</option>
+                    <option value="svg">.svg (Scalable Vector Graphics - as text or embedded)</option>
+                    <option value="json">.json (JavaScript Object Notation)</option>
+                    <option value="xml">.xml (Extensible Markup Language - as text)</option>
+                    <option value="webp">.webp (Image)</option>
+                </select>
+            </div>
+
+            <button id="convertButton" class="w-full px-6 py-3 bg-sky-600 text-white font-semibold rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50 shadow-sm transition-colors disabled:opacity-50">
+                Convert and Download
+            </button>
+        </div>
+
+        <div id="statusMessage" class="mt-6 text-sm text-center"></div>
+        <div id="downloadLinkContainer" class="mt-4 text-center"></div>
+
+        <footer class="mt-8 text-center text-xs text-slate-400">
+            <p>Conversions are performed in your browser. No files are uploaded to a server.</p>
+            <p>Results may vary depending on file complexity and browser capabilities.</p>
+        </footer>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const outputFormatSelect = document.getElementById('outputFormat');
+        const convertButton = document.getElementById('convertButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const downloadLinkContainer = document.getElementById('downloadLinkContainer');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+
+        let currentFile = null;
+
+        fileInput.addEventListener('change', (event) => {
+            currentFile = event.target.files[0];
+            if (currentFile) {
+                fileNameDisplay.textContent = `Selected: ${currentFile.name}`;
+                convertButton.disabled = false;
+                statusMessage.textContent = '';
+                downloadLinkContainer.innerHTML = '';
+            } else {
+                fileNameDisplay.textContent = '';
+                convertButton.disabled = true;
+            }
+        });
+        convertButton.disabled = true; // Initially disabled
+
+        convertButton.addEventListener('click', async () => {
+            if (!currentFile) {
+                statusMessage.textContent = 'Please select a file first.';
+                statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                return;
+            }
+
+            convertButton.disabled = true;
+            statusMessage.textContent = 'Converting...';
+            statusMessage.className = 'mt-6 text-sm text-center text-sky-600';
+            downloadLinkContainer.innerHTML = '';
+
+            const outputFormat = outputFormatSelect.value;
+            const reader = new FileReader();
+
+            try {
+                // Image conversions
+                if (['jpg', 'png', 'webp'].includes(outputFormat) && currentFile.type.startsWith('image/')) {
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            let mimeType = `image/${outputFormat}`;
+                            if (outputFormat === 'jpg') mimeType = 'image/jpeg';
+                            
+                            try {
+                                const dataUrl = canvas.toDataURL(mimeType, 0.9); // 0.9 quality for jpg/webp
+                                triggerDownload(dataUrl, `${getFileNameWithoutExtension(currentFile.name)}.${outputFormat}`);
+                                statusMessage.textContent = 'Conversion successful!';
+                                statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                            } catch (canvasError) {
+                                console.error("Canvas toDataURL error:", canvasError);
+                                if (outputFormat === 'webp' && !isWebPSupported(canvas)) {
+                                     statusMessage.textContent = `Error: Your browser may not support encoding to .webp. Try another format.`;
+                                } else {
+                                     statusMessage.textContent = `Error during image conversion: ${canvasError.message}.`;
+                                }
+                                statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                            }
+                        };
+                        img.onerror = () => {
+                            statusMessage.textContent = 'Error loading image.';
+                            statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                        }
+                        img.src = e.target.result;
+                    };
+                    reader.readAsDataURL(currentFile);
+                }
+                // Text output
+                else if (outputFormat === 'txt') {
+                    reader.onload = (e) => {
+                        let textContent = e.target.result;
+                        if (currentFile.type === 'text/html') { // Strip HTML tags
+                            const tempEl = document.createElement('div');
+                            tempEl.innerHTML = textContent;
+                            textContent = tempEl.textContent || tempEl.innerText || "";
+                        }
+                        const blob = new Blob([textContent], { type: 'text/plain' });
+                        triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.txt`);
+                        statusMessage.textContent = 'Conversion successful!';
+                        statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                    };
+                    reader.readAsText(currentFile);
+                }
+                // HTML output (from Markdown or wrapping text/svg)
+                else if (outputFormat === 'html') {
+                    reader.onload = (e) => {
+                        let htmlContent = '';
+                        const fileContent = e.target.result;
+                        if (currentFile.type === 'text/markdown' || currentFile.name.toLowerCase().endsWith('.md')) {
+                            htmlContent = marked.parse(fileContent); // Using marked.js
+                        } else if (currentFile.type === 'image/svg+xml' || currentFile.name.toLowerCase().endsWith('.svg')) {
+                            htmlContent = `<!DOCTYPE html><html><head><title>${currentFile.name}</title></head><body>${fileContent}</body></html>`;
+                        } 
+                        else if (currentFile.type.startsWith('text/')) {
+                             htmlContent = `<!DOCTYPE html><html><head><title>${currentFile.name}</title></head><body><pre>${escapeHtml(fileContent)}</pre></body></html>`;
+                        }
+                        else {
+                            statusMessage.textContent = `Cannot convert ${currentFile.type} to HTML directly. Try .txt for text content.`;
+                            statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                            convertButton.disabled = false;
+                            return;
+                        }
+                        const blob = new Blob([htmlContent], { type: 'text/html' });
+                        triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.html`);
+                        statusMessage.textContent = 'Conversion successful!';
+                        statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                    };
+                    reader.readAsText(currentFile);
+                }
+                // JSON to CSV (simple)
+                else if (outputFormat === 'csv' && (currentFile.type === 'application/json' || currentFile.name.toLowerCase().endsWith('.json'))) {
+                    reader.onload = (e) => {
+                        try {
+                            const jsonData = JSON.parse(e.target.result);
+                            if (!Array.isArray(jsonData) || jsonData.length === 0) {
+                                throw new Error("JSON data must be an array of objects for CSV conversion.");
+                            }
+                            const headers = Object.keys(jsonData[0]);
+                            let csvContent = headers.join(',') + '\n';
+                            jsonData.forEach(row => {
+                                const values = headers.map(header => {
+                                    let cell = row[header] === null || row[header] === undefined ? '' : String(row[header]);
+                                    // Escape commas and quotes
+                                    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+                                        cell = `"${cell.replace(/"/g, '""')}"`;
+                                    }
+                                    return cell;
+                                });
+                                csvContent += values.join(',') + '\n';
+                            });
+                            const blob = new Blob([csvContent], { type: 'text/csv' });
+                            triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.csv`);
+                            statusMessage.textContent = 'Conversion successful!';
+                            statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                        } catch (err) {
+                            statusMessage.textContent = `Error converting JSON to CSV: ${err.message}. Ensure JSON is an array of flat objects.`;
+                            statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                        }
+                    };
+                    reader.readAsText(currentFile);
+                }
+                // CSV to JSON (simple)
+                else if (outputFormat === 'json' && (currentFile.type === 'text/csv' || currentFile.name.toLowerCase().endsWith('.csv'))) {
+                     reader.onload = (e) => {
+                        try {
+                            const csvText = e.target.result;
+                            const lines = csvText.trim().split('\n');
+                            if (lines.length < 1) throw new Error("CSV is empty or has no header row.");
+                            
+                            // Basic CSV parsing (does not handle complex cases like quotes within quotes well)
+                            const parseCsvRow = (rowStr) => {
+                                const result = [];
+                                let currentVal = '';
+                                let inQuotes = false;
+                                for (let char of rowStr) {
+                                    if (char === '"') {
+                                        inQuotes = !inQuotes;
+                                    } else if (char === ',' && !inQuotes) {
+                                        result.push(currentVal);
+                                        currentVal = '';
+                                    } else {
+                                        currentVal += char;
+                                    }
+                                }
+                                result.push(currentVal); // last value
+                                return result;
+                            };
+
+                            const headers = parseCsvRow(lines[0]);
+                            const jsonData = [];
+                            for (let i = 1; i < lines.length; i++) {
+                                const values = parseCsvRow(lines[i]);
+                                if (values.length === headers.length) {
+                                    const obj = {};
+                                    headers.forEach((header, index) => {
+                                        obj[header.trim()] = values[index].trim();
+                                    });
+                                    jsonData.push(obj);
+                                }
+                            }
+                            const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+                            triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.json`);
+                            statusMessage.textContent = 'Conversion successful!';
+                            statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                        } catch (err) {
+                            statusMessage.textContent = `Error converting CSV to JSON: ${err.message}. Ensure CSV is well-formed.`;
+                            statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                        }
+                    };
+                    reader.readAsText(currentFile);
+                }
+                // SVG output (as text, or image embedded in SVG)
+                else if (outputFormat === 'svg') {
+                    if (currentFile.type === 'image/svg+xml' || currentFile.name.toLowerCase().endsWith('.svg')) { // Input is SVG
+                        reader.onload = (e) => {
+                            const blob = new Blob([e.target.result], { type: 'image/svg+xml' });
+                            triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.svg`);
+                            statusMessage.textContent = 'SVG content saved!';
+                            statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                        };
+                        reader.readAsText(currentFile);
+                    } else if (currentFile.type.startsWith('image/')) { // Input is raster image, embed it
+                         reader.onload = (e) => {
+                            const imgDataUrl = e.target.result;
+                            const img = new Image();
+                            img.onload = () => {
+                                const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${img.width}" height="${img.height}">
+                                                    <image href="${imgDataUrl}" x="0" y="0" width="${img.width}" height="${img.height}" />
+                                                  </svg>`;
+                                const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+                                triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}_embed.svg`);
+                                statusMessage.textContent = 'Image embedded in SVG successfully!';
+                                statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                            }
+                            img.onerror = () => {
+                                statusMessage.textContent = 'Error loading image to embed in SVG.';
+                                statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                            }
+                            img.src = imgDataUrl;
+                        };
+                        reader.readAsDataURL(currentFile);
+                    } else {
+                        statusMessage.textContent = `Cannot convert ${currentFile.type} to SVG in this way. Select an SVG or image file.`;
+                        statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+                    }
+                }
+                // XML output (as text)
+                else if (outputFormat === 'xml' && (currentFile.type === 'application/xml' || currentFile.type === 'text/xml' || currentFile.name.toLowerCase().endsWith('.xml'))) {
+                    reader.onload = (e) => {
+                        const blob = new Blob([e.target.result], { type: 'application/xml' });
+                        triggerDownload(URL.createObjectURL(blob), `${getFileNameWithoutExtension(currentFile.name)}.xml`);
+                        statusMessage.textContent = 'XML content saved!';
+                        statusMessage.className = 'mt-6 text-sm text-center text-green-600';
+                    };
+                    reader.readAsText(currentFile);
+                }
+                // Unsupported conversion
+                else {
+                    statusMessage.textContent = `Conversion from ${currentFile.type || 'this file type'} to .${outputFormat} is not supported or is too complex for client-side.`;
+                    statusMessage.className = 'mt-6 text-sm text-center text-orange-600';
+                }
+            } catch (error) {
+                console.error("Conversion error:", error);
+                statusMessage.textContent = `An error occurred: ${error.message}`;
+                statusMessage.className = 'mt-6 text-sm text-center text-red-600';
+            } finally {
+                if (outputFormat !== 'jpg' && outputFormat !== 'png' && outputFormat !== 'webp' && !(outputFormat === 'svg' && currentFile.type.startsWith('image/'))) { // For non-image reader operations
+                    convertButton.disabled = false;
+                }
+                 // For image operations, button is re-enabled inside img.onload or onerror
+            }
+        });
+
+        function getFileNameWithoutExtension(fileName) {
+            return fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+        }
+
+        function triggerDownload(dataUrlOrObjectUrl, fileName) {
+            const a = document.createElement('a');
+            a.href = dataUrlOrObjectUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            // For Object URLs, revoke them after download to free up resources
+            if (dataUrlOrObjectUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(dataUrlOrObjectUrl);
+            }
+            convertButton.disabled = false; // Re-enable button after download
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        function isWebPSupported(canvas) {
+            // Basic check, more robust checks might involve trying to create a small webp
+            try {
+                return canvas.toDataURL('image/webp', 0.1).indexOf('data:image/webp') === 0;
+            } catch (e) {
+                return false;
+            }
+        }
+
+    </script>
+</body>
+</html>
