@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sequence Sparkle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a2e; /* Deep space blue */
+            --tile-bg: #2a2a4e; /* Darker tile */
+            --tile-active-glow: 0 0 15px 5px rgba(120, 255, 255, 0.7), 0 0 25px 10px rgba(120, 255, 255, 0.5); /* Cyan glow */
+            --text-color: #e0e0fc; /* Light lavender */
+            --accent-color: #00ffff; /* Cyan */
+            --button-bg: linear-gradient(145deg, #3d3d7e, #2a2a4e);
+            --button-hover-bg: linear-gradient(145deg, #4a4a9a, #3d3d7e);
+            --button-shadow: 5px 5px 10px #1e1e3f, -5px -5px 10px #36365d;
+            --button-inset-shadow: inset 2px 2px 5px #1e1e3f, inset -2px -2px 5px #36365d;
+            --font-main: 'Poppins', sans-serif;
+            --font-title: 'Press Start 2P', cursive;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 15px;
+            box-sizing: border-box;
+            overflow: hidden; /* Prevent scrollbars from game elements */
+            -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+        }
+
+        .game-container {
+            background-color: rgba(0,0,0,0.2);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.2);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            width: 100%;
+            max-width: 450px; /* Max width for larger screens */
+            text-align: center;
+        }
+
+        h1 {
+            font-family: var(--font-title);
+            color: var(--accent-color);
+            font-size: clamp(1.8rem, 5vw, 2.5rem); /* Responsive font size */
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px var(--accent-color);
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 25px;
+            font-size: clamp(1rem, 3vw, 1.2rem);
+        }
+
+        .info-panel span {
+            background: var(--tile-bg);
+            padding: 8px 15px;
+            border-radius: 10px;
+            box-shadow: var(--button-inset-shadow);
+        }
+
+        #gameBoard {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* Default 3x3 grid */
+            gap: 10px; /* Gap between tiles */
+            width: 100%;
+            max-width: 360px; /* Max width of the game board */
+            margin: 0 auto 25px auto; /* Center the board */
+            aspect-ratio: 1 / 1; /* Keep it square */
+        }
+
+        .tile {
+            background-color: var(--tile-bg);
+            border-radius: 15px; /* More rounded tiles */
+            cursor: pointer;
+            transition: all 0.15s ease-out;
+            box-shadow: var(--button-shadow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            aspect-ratio: 1 / 1; /* Ensure tiles are square */
+        }
+
+        .tile:active {
+            transform: scale(0.95);
+            box-shadow: var(--button-inset-shadow);
+        }
+        
+        .tile.active {
+            background-color: var(--accent-color);
+            box-shadow: var(--tile-active-glow);
+            transform: scale(1.05);
+        }
+        
+        .tile.player-correct {
+            background-color: #28a745; /* Green for correct */
+            box-shadow: 0 0 15px 5px rgba(40, 167, 69, 0.7);
+        }
+
+        .tile.player-incorrect {
+            background-color: #dc3545; /* Red for incorrect */
+            box-shadow: 0 0 15px 5px rgba(220, 53, 69, 0.7);
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        button#actionButton {
+            font-family: var(--font-title);
+            background: var(--button-bg);
+            color: var(--accent-color);
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: clamp(1rem, 3vw, 1.1rem);
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+            box-shadow: var(--button-shadow);
+            letter-spacing: 1px;
+        }
+
+        button#actionButton:hover, button#actionButton:focus {
+            background: var(--button-hover-bg);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        button#actionButton:active {
+            transform: translateY(1px) scale(0.98);
+            box-shadow: var(--button-inset-shadow);
+        }
+
+
+        #messageArea {
+            margin-top: 20px;
+            font-size: clamp(0.9rem, 2.5vw, 1rem);
+            min-height: 2.5em; /* Reserve space for messages */
+            color: #f0f0fc;
+        }
+        
+        /* Modal styles */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: var(--tile-bg);
+            margin: auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+            border: 1px solid var(--accent-color);
+            animation: modalOpen 0.3s ease-out;
+        }
+        @keyframes modalOpen {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-content h2 {
+            font-family: var(--font-title);
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        .modal-content p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+
+        /* Disable user select for game elements */
+        h1, .info-panel, #gameBoard, button, #messageArea {
+            user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            -moz-user-select: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Sequence Sparkle</h1>
+        
+        <div class="info-panel">
+            <span>Level: <span id="levelDisplay">0</span></span>
+            <span>Score: <span id="scoreDisplay">0</span></span>
+        </div>
+
+        <div id="gameBoard">
+            </div>
+
+        <button id="actionButton">Start Game</button>
+        <p id="messageArea">Memorize the sequence!</p>
+    </div>
+
+    <div id="gameOverModal" class="modal">
+        <div class="modal-content">
+            <h2 id="gameOverTitle">Game Over!</h2>
+            <p id="finalScoreMessage">Your final score: 0</p>
+            <p id="highScoreMessage">High Score: 0</p>
+            <button id="restartButton">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Game DOM Elements
+        const gameBoard = document.getElementById('gameBoard');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const actionButton = document.getElementById('actionButton');
+        const messageArea = document.getElementById('messageArea');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const finalScoreMessage = document.getElementById('finalScoreMessage');
+        const highScoreMessage = document.getElementById('highScoreMessage');
+        const restartButton = document.getElementById('restartButton');
+        const gameOverTitle = document.getElementById('gameOverTitle');
+
+        // Game Variables
+        let sequence = []; // Stores the computer's sequence
+        let playerSequence = []; // Stores the player's input sequence
+        let level = 0;
+        let score = 0;
+        let highScore = localStorage.getItem('sequenceSparkleHighScore') || 0;
+        let canPlayerClick = false; // To control when player can interact
+        let gameInProgress = false;
+        let sequencePlaying = false; // To prevent clicks while sequence is shown
+
+        const TILE_COUNT = 9; // 3x3 grid
+        const TILE_COLORS = ['#FF5733', '#33FF57', '#3357FF', '#FF33A1', '#A133FF', '#33FFA1', '#FF8C33', '#8C33FF', '#FFFF33']; // Example colors if needed
+
+        // --- Game Initialization ---
+        function createGameBoard() {
+            gameBoard.innerHTML = ''; // Clear previous tiles
+            for (let i = 0; i < TILE_COUNT; i++) {
+                const tile = document.createElement('div');
+                tile.classList.add('tile');
+                tile.dataset.index = i;
+                // tile.style.setProperty('--tile-active-color', TILE_COLORS[i % TILE_COLORS.length]); // If using varied active colors
+                tile.addEventListener('click', handleTileClick);
+                tile.addEventListener('touchstart', (e) => { // For mobile tap feedback
+                    e.preventDefault(); // Prevent zoom or other default touch actions
+                    handleTileClick(e);
+                }, { passive: false });
+                gameBoard.appendChild(tile);
+            }
+        }
+
+        // --- Game Logic ---
+        function startGame() {
+            console.log("Starting game...");
+            gameInProgress = true;
+            sequence = [];
+            playerSequence = [];
+            level = 0;
+            score = 0;
+            updateDisplays();
+            messageArea.textContent = "Watch carefully...";
+            actionButton.textContent = "Game In Progress";
+            actionButton.disabled = true;
+            gameOverModal.style.display = "none";
+            nextRound();
+        }
+
+        function nextRound() {
+            if (!gameInProgress) return;
+            level++;
+            playerSequence = [];
+            canPlayerClick = false;
+            messageArea.textContent = "Watch the sequence...";
+            updateDisplays();
+
+            // Add a new random step to the sequence
+            const randomNumber = Math.floor(Math.random() * TILE_COUNT);
+            sequence.push(randomNumber);
+
+            playSequence();
+        }
+
+        async function playSequence() {
+            sequencePlaying = true;
+            canPlayerClick = false; // Disable clicks while sequence plays
+            await new Promise(resolve => setTimeout(resolve, 600)); // Delay before sequence starts
+
+            for (let i = 0; i < sequence.length; i++) {
+                const tileIndex = sequence[i];
+                const tile = gameBoard.children[tileIndex];
+                
+                await new Promise(resolve => {
+                    setTimeout(() => {
+                        tile.classList.add('active');
+                        // Optional: Play a sound here
+                        setTimeout(() => {
+                            tile.classList.remove('active');
+                            resolve();
+                        }, 500); // How long the tile stays active
+                    }, 300); // Delay between tile activations
+                });
+            }
+            canPlayerClick = true;
+            sequencePlaying = false;
+            messageArea.textContent = "Your turn! Repeat the sequence.";
+        }
+
+        function handleTileClick(event) {
+            if (!canPlayerClick || !gameInProgress || sequencePlaying) return;
+
+            const clickedTile = event.target.closest('.tile'); // Ensure we get the tile even if an inner element is clicked
+            if (!clickedTile) return;
+
+            const tileIndex = parseInt(clickedTile.dataset.index);
+            playerSequence.push(tileIndex);
+
+            // Visual feedback for player click
+            clickedTile.classList.add('active');
+            // Optional: Play a click sound
+            setTimeout(() => clickedTile.classList.remove('active'), 200);
+
+            checkPlayerMove(tileIndex);
+        }
+
+        function checkPlayerMove(tileIndex) {
+            const currentStepIndex = playerSequence.length - 1;
+
+            if (playerSequence[currentStepIndex] !== sequence[currentStepIndex]) {
+                // Player made a mistake
+                flashTile(tileIndex, 'player-incorrect');
+                gameOver();
+                return;
+            }
+
+            // Player got this step correct
+            flashTile(tileIndex, 'player-correct');
+            score += 10; // Add points for each correct tap
+            updateDisplays();
+
+            // If player completed the sequence
+            if (playerSequence.length === sequence.length) {
+                if (gameInProgress) {
+                    score += 50 * level; // Bonus for completing a level
+                    updateDisplays();
+                    messageArea.textContent = "Correct! Next level...";
+                    canPlayerClick = false; // Prevent further clicks until next sequence
+                    setTimeout(nextRound, 1000); // Wait a bit before starting next round
+                }
+            }
+        }
+        
+        function flashTile(tileIndex, feedbackClass) {
+            const tile = gameBoard.children[tileIndex];
+            tile.classList.add(feedbackClass);
+            setTimeout(() => {
+                tile.classList.remove(feedbackClass);
+            }, 300);
+        }
+
+
+        function gameOver() {
+            console.log("Game Over. Final Score:", score);
+            gameInProgress = false;
+            canPlayerClick = false;
+            messageArea.textContent = "Game Over! Click 'Play Again'.";
+            actionButton.textContent = "Start Game"; // Reset button text
+            actionButton.disabled = false; // Re-enable start button
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('sequenceSparkleHighScore', highScore);
+                gameOverTitle.textContent = "New High Score!";
+            } else {
+                gameOverTitle.textContent = "Game Over!";
+            }
+            finalScoreMessage.textContent = `Your score: ${score}`;
+            highScoreMessage.textContent = `High Score: ${highScore}`;
+            gameOverModal.style.display = "flex";
+        }
+
+        function updateDisplays() {
+            levelDisplay.textContent = level;
+            scoreDisplay.textContent = score;
+        }
+
+        // --- Event Listeners ---
+        actionButton.addEventListener('click', () => {
+            if (!gameInProgress) {
+                startGame();
+            }
+        });
+        
+        restartButton.addEventListener('click', () => {
+            gameOverModal.style.display = "none";
+            startGame();
+        });
+
+        // --- Initial Setup ---
+        createGameBoard();
+        updateDisplays(); // Initialize score/level display
+        highScoreMessage.textContent = `High Score: ${highScore}`; // Show high score initially in modal if needed
+
+        // Prevent scrolling on touch devices for a better game experience
+        document.body.addEventListener('touchmove', function(event) {
+            event.preventDefault();
+        }, { passive: false });
+
+    </script>
+</body>
+</html>
