@@ -23,6 +23,7 @@
             --button-bg: rgba(255, 255, 255, 0.08);
             --button-border: rgba(255, 255, 255, 0.2);
             --button-hover-bg: rgba(255, 255, 255, 0.15);
+            --button-active-bg: rgba(255, 255, 255, 0.2);
             --font-display: 'Orbitron', sans-serif;
             --font-body: 'Rajdhani', sans-serif;
         }
@@ -36,6 +37,7 @@
             align-items: center;
             justify-content: center;
             min-height: 100vh;
+            height: 100vh; /* Ensure full viewport height */
             margin: 0;
             padding: 10px;
             box-sizing: border-box;
@@ -45,7 +47,7 @@
 
         .game-wrapper {
             width: 100%;
-            max-width: 500px; /* Max width for the game area */
+            max-width: 500px; 
             background-color: rgba(0,0,0,0.3);
             border-radius: 20px;
             padding: 20px;
@@ -84,7 +86,7 @@
 
         #gameArea {
             width: 100%;
-            height: 150px; /* Height of the track for shapes */
+            height: 150px; 
             background-color: rgba(0,0,0,0.2);
             border-radius: 10px;
             margin-bottom: 20px;
@@ -95,9 +97,9 @@
 
         #targetZone {
             position: absolute;
-            left: 10%; /* Position of the target zone */
+            left: 10%; 
             top: 0;
-            width: 20px; /* Width of the target line/zone */
+            width: 20px; 
             height: 100%;
             background-color: var(--target-zone-bg);
             border-left: 2px solid var(--target-zone-border);
@@ -110,11 +112,11 @@
             width: 40px;
             height: 40px;
             top: 50%;
-            transform: translateY(-50%); /* Vertically center shapes */
-            /* CSS transition removed from here, will be set by JS */
+            transform: translateY(-50%); 
             display: flex;
             justify-content: center;
             align-items: center;
+            /* Transition will be set by JS */
         }
         .shape svg {
             width: 80%;
@@ -136,19 +138,21 @@
             font-size: 1.5rem; 
             border-radius: 10px;
             cursor: pointer;
-            transition: all 0.15s ease-out;
+            transition: background-color 0.1s ease-out, transform 0.1s ease-out, box-shadow 0.1s ease-out;
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             display: flex;
             justify-content: center;
             align-items: center;
             height: 70px; 
+            touch-action: manipulation; /* Improve touch responsiveness */
         }
-        .control-button:hover {
+        .control-button:hover { /* For mouse hover */
             background-color: var(--button-hover-bg);
             transform: translateY(-2px);
             box-shadow: 0 6px 15px rgba(0,0,0,0.4);
         }
-        .control-button:active {
+        .control-button.active-feedback { /* For pointerdown visual feedback */
+            background-color: var(--button-active-bg);
             transform: translateY(1px) scale(0.98);
             box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
@@ -328,41 +332,35 @@
         }
 
         function spawnShape() {
-            if (!gameActive || !gameArea) return; // Added !gameArea check
+            if (!gameActive || !gameArea) return;
 
             const randomShapeType = shapes[Math.floor(Math.random() * shapes.length)];
             const shapeElement = document.createElement('div');
             shapeElement.classList.add('shape');
             shapeElement.dataset.type = randomShapeType;
             
-            // Initial position: off-screen to the right.
-            // gameArea's width is the reference.
             shapeElement.style.left = `${gameArea.offsetWidth}px`; 
             
             const svgContainer = document.createElement('div');
             svgContainer.innerHTML = shapeSVGs[randomShapeType];
             const svgElement = svgContainer.firstChild;
-            if (svgElement) svgElement.style.fill = shapeColors[randomShapeType]; // Check if svgElement exists
-            shapeElement.appendChild(svgContainer); // Append container, not svgElement directly
+            if (svgElement) svgElement.style.fill = shapeColors[randomShapeType]; 
+            shapeElement.appendChild(svgContainer); 
             
             gameArea.appendChild(shapeElement);
 
-            // Set transition properties AFTER appending and setting initial position
             shapeElement.style.transitionProperty = 'left';
             shapeElement.style.transitionTimingFunction = 'linear';
             shapeElement.style.transitionDuration = `${gameSpeed}ms`;
             
-            // Force a reflow to ensure initial state is rendered before transition starts
             void shapeElement.offsetWidth; 
 
-            // Set the target position to trigger the animation
             requestAnimationFrame(() => { 
-                if (gameArea.contains(shapeElement)) { // Check if still in DOM
+                if (gameArea.contains(shapeElement)) { 
                     shapeElement.style.left = `-${shapeElement.offsetWidth}px`; 
                 }
             });
 
-            // Cleanup: Remove shape after animation + buffer
             setTimeout(() => {
                 if (gameArea.contains(shapeElement)) {
                     gameArea.removeChild(shapeElement);
@@ -370,24 +368,27 @@
                         handleMiss("Missed!");
                     }
                 }
-            }, gameSpeed + 200); // Increased buffer slightly
+            }, gameSpeed + 200); 
         }
 
         function handleControlClick(shapeType) {
-            if (!gameActive || !targetZone) return; // Added !targetZone check
+            if (!gameActive || !targetZone) return; 
 
             const targetZoneRect = targetZone.getBoundingClientRect();
             const targetCenter = targetZoneRect.left + targetZoneRect.width / 2;
 
             let hit = false;
-            gameArea.querySelectorAll('.shape').forEach(shape => {
-                if (hit) return; 
+            // Iterate over a static copy of the shapes to avoid issues if one is removed
+            const currentShapes = Array.from(gameArea.querySelectorAll('.shape'));
+
+            currentShapes.forEach(shape => {
+                if (hit || !gameArea.contains(shape)) return; // If already hit or shape removed by other means
 
                 const shapeRect = shape.getBoundingClientRect();
                 const shapeCenter = shapeRect.left + shapeRect.width / 2;
 
-                const perfectWindow = targetZoneRect.width * 0.6; 
-                const goodWindow = targetZoneRect.width * 1.2;   
+                const perfectWindow = targetZoneRect.width * 0.7; // Slightly more generous perfect window
+                const goodWindow = targetZoneRect.width * 1.4;   // Slightly more generous good window
 
                 const distance = Math.abs(shapeCenter - targetCenter);
 
@@ -423,10 +424,12 @@
 
         function increaseDifficulty() {
             if (gameSpeed > minSpeed) {
-                gameSpeed -= speedIncrement * 0.2; 
+                gameSpeed -= speedIncrement * 0.15; // Adjusted decrement
+                if (gameSpeed < minSpeed) gameSpeed = minSpeed;
             }
             if (shapeSpawnInterval > minSpawnInterval) {
-                shapeSpawnInterval -= spawnIntervalDecrement * 0.5; 
+                shapeSpawnInterval -= spawnIntervalDecrement * 0.35; // Adjusted decrement
+                if (shapeSpawnInterval < minSpawnInterval) shapeSpawnInterval = minSpawnInterval;
             }
             clearInterval(gameIntervalId);
             if (gameActive) {
@@ -435,14 +438,14 @@
         }
 
         function displayFeedback(text, className) {
-            if (!messageDisplay) return; // Check if messageDisplay exists
+            if (!messageDisplay) return; 
             messageDisplay.textContent = text;
-            messageDisplay.className = ''; 
-            messageDisplay.classList.add(className);
+            messageDisplay.className = 'text-center font-semibold'; // Reset base classes
+            messageDisplay.classList.add(className); // Add specific feedback class
             setTimeout(() => {
                 if (messageDisplay.textContent === text) { 
                      messageDisplay.textContent = "";
-                     messageDisplay.className = '';
+                     messageDisplay.className = 'text-center font-semibold'; // Reset to base
                 }
             }, 800);
         }
@@ -481,17 +484,24 @@
 
         if (controlButtons) {
             controlButtons.forEach(button => {
-                button.addEventListener('click', () => handleControlClick(button.dataset.shape));
-                button.addEventListener('touchstart', (e) => {
-                    e.preventDefault(); 
-                    button.style.transform = 'translateY(1px) scale(0.98)';
-                    button.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
-                }, { passive: false });
-                button.addEventListener('touchend', (e) => {
+                // Visual feedback on pointerdown
+                button.addEventListener('pointerdown', (e) => {
+                    e.preventDefault(); // Important for touch to prevent other actions
+                    if (gameActive) {
+                        button.classList.add('active-feedback');
+                    }
+                });
+                // Action on pointerup
+                button.addEventListener('pointerup', (e) => {
                     e.preventDefault();
-                    button.style.transform = ''; 
-                    button.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
-                    handleControlClick(button.dataset.shape);
+                    button.classList.remove('active-feedback');
+                    if (gameActive) {
+                        handleControlClick(button.dataset.shape);
+                    }
+                });
+                // Remove active feedback if pointer leaves button while pressed
+                button.addEventListener('pointerleave', () => {
+                     button.classList.remove('active-feedback');
                 });
             });
         }
